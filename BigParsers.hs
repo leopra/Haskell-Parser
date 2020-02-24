@@ -28,7 +28,7 @@ parseScDef = do v <- identifier
 parseExpr :: Parser (Expr Name)
 parseExpr = parseLocalDef
             -- <|> parseRecursiveDef
-            -- <|> parseCase
+            <|> parseCase
             -- <|> parseLambda
             <|> parseAExpr
 
@@ -47,6 +47,13 @@ parseAlt = do character "<"
               character "->"
               exp <- parseExpr
               return (index, vars, exp)
+
+parseCase :: Parser (Expr Name)
+parseCase = do character "case"
+               c <- parseExpr
+               character "of"
+               alts <- parseAlts
+               return (ECase c alts) 
 
 -- | Parsers one or more alternatives
 parseAlts :: Parser ([Alter Name])
