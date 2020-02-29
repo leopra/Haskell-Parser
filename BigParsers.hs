@@ -2,9 +2,8 @@ module BigParsers where
 
 import Expr
 import Parser
-import SingleParsers
 
-type ScDefn a = (Name, [a], Expr a)  -- Super combinator definition
+type ScDefn a = (Name, [a], Expr a)
 type CoreScDefn = ScDefn Name
 
 type Program a = [ScDefn a]
@@ -22,21 +21,90 @@ parseScDef :: Parser (ScDefn Name)
 parseScDef = do v <- identifier
                 pf <- many identifier
                 character "="
-                body <- parseExpr -- call to parseExpr
+                body <- parseExpr
                 return (v, pf, body)
 
 parseExpr :: Parser (Expr Name)
 parseExpr = parseLocalDef
-            -- <|> parseRecursiveDef
+            <|> parseLetRec
             <|> parseCase
-            -- <|> parseLambda
-            <|> parseAExpr
+            <|> parseLambda
+            <|> parseOp1
 
-parseAExpr :: Parser (Expr Name)
-parseAExpr = parseVar
-             <|> parseNum
-             <|> parseConst
-             <|> parseParExpr
+
+------------------------------------------------------- 
+-- operations
+
+parseOp1 :: Parser (Expr Name)
+parseOp1 = do a <- parseOp2
+              do character "|"
+                 b <- parseOp1
+                 return (EAp (EAp (EVar "|") a) b) 
+               <|> return a
+
+parseOp2 :: Parser (Expr Name)
+parseOp2 = do a <- parseOp3
+              do character "&"
+                 b <- parseOp2
+                 return (EAp (EAp (EVar "&") a) b) 
+               <|> return a
+
+parseOp3 :: Parser (Expr Name)
+parseOp3 = do a <- parseOp4
+              do k <- relop
+                 b <- parseOp4
+                 return (EAp (EAp (EVar k) a) b) 
+               <|> return a
+
+parseOp4 :: Parser (Expr Name)
+parseOp4 = do a <- parseOp5
+              do character "+"
+                 b <- parseOp4
+                 return (EAp (EAp (EVar "+") a) b)
+                <|> do character "-"
+                       b <- parseOp5
+                       return (EAp (EAp (EVar "-") a) b)
+                <|> return a
+
+parseOp5 :: Parser (Expr Name)
+parseOp5 = do a <- parseOp6
+              do character "*"
+                 b <- parseOp5
+                 return (EAp (EAp (EVar "*") a) b)
+                <|> do character "/"
+                       b <- parseOp6
+                       return (EAp (EAp (EVar "*") a) b)
+                <|> return a
+
+parseOp6:: Parser (Expr Name)
+parseOp6 = do x <- parseAExpr
+              xs <- many parseAExpr
+              return (foldl(\a b -> (EAp a b)) x xs)
+
+relop :: Parser String
+relop = character "=="
+         <|> character"<="
+         <|> character">="
+         <|> character ">"
+         <|> character "<"
+         <|> character"~="
+
+
+
+parseLetRec :: Parser (Expr Name)
+parseLetRec = do character "letrec"
+                 def <- parseDef
+                 dd <- many parseDef
+                 character "in"
+                 expr <- parseExpr
+                 return (ELet Recursive (def:dd) expr)
+
+parseLambda :: Parser (Expr Name)
+parseLambda = do character "\\"
+                 a <- some identifier
+                 character "."
+                 expr <- parseExpr 
+                 return (ELam a expr)
 
 -- | Parses a single alternative
 parseAlt :: Parser (Alter Name)
@@ -66,7 +134,7 @@ parseAlts = do a <- parseAlt
 parseDef :: Parser (Def Name)
 parseDef = do i <- identifier   -- Get the identifier
               character "="        -- Read the "="
-              v <- parseExpr    -- Get the value
+              v <- parseAExpr    -- Get the value
               return (i, v)     -- Return (identifier, value)
 
 parseLocalDef :: Parser (Expr Name)
@@ -83,12 +151,24 @@ parseMultipleDefs = do d <- parseDef
                                       parseDef)
                        return (d:df)
                        
--- | Parsers a number
+parseAExpr :: Parser (Expr Name)
+parseAExpr = parseVar
+             <|> parseNum
+             <|> parseConst
+             <|> parseParExpr
+
+
+-- | Parsers a variable
+parseVar :: Parser (Expr Name)
+parseVar = do i <- identifier
+              return (EVar i)
+
+-- | Parses a number
 parseNum :: Parser (Expr Name)
 parseNum = do n <- integer
               return (ENum n)
 
--- | Parsers a constructor
+-- | Parses a constructor
 parseConst :: Parser (Expr Name)
 parseConst = do character "Pack"
                 character "{"
@@ -106,7 +186,3 @@ parseParExpr = do character "("
                   character ")"
                   return e
 
--- | Parsers a variable
-parseVar :: Parser (Expr Name)
-parseVar = do i <- identifier
-              return (EVar i)

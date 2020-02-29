@@ -1,62 +1,133 @@
-module Parser(module Parser, module Control.Applicative) where
-    
+module Parser(module Control.Applicative, module Parser) where
+
 import Control.Applicative
+import Data.Char
 
-
-    -- | Create a new Parser type using newtype in order to allow it to be made into instances of classes
 newtype Parser a = P(String -> [(a, String)])
 
-    -- | Apply a generic Parser to an input string
+    -- Apply a generic Parser to an input string (app)
 parse :: Parser a -> String -> [(a, String)]
 parse (P p) inp = p inp
 
-    -- | Make Parser an instance of Functor
+    --  instance of Functor
 instance Functor Parser where
     -- fmap :: (a -> b) -> Parser a -> Parser b
   fmap f parser = P(\input -> case parse parser input of
                             []                   -> []
                             [(value, remaining)] -> [(f value, remaining)])
 
-    -- | Make Parser an instance of Applicative
+    -- instance of Applicative
 instance Applicative Parser where
-    -- | Transforms a value into a parser that always succeds with this value as its results,
-    -- | without consuming any of the input string
+    -- transforms value in parser without consuming the input string
     -- pure :: a -> Parser a
   pure value = P (\input -> [(value, input)])
-
-    -- | Applies a parser that returns a function to a parser that returns an argument to give
-    -- | a parser that returns the result of applying the function to the argument, and only
-    -- | succeds if all the components succeed.
     -- <*> :: Parser (a -> b) -> Parser a -> Parser b
   pg <*> px = P(\input -> case parse pg input of
                                 []        -> []
                                 [(g, out)] -> parse (fmap g px) out)
 
 
-    -- | Make Parser an instance of Monad
+    -- instance of Monad
 instance Monad Parser where
-    -- | The parser p >>= f fails if the application of the parser p to the input string inp fails,
-    -- | and otherwise applies the function f to the result value v to give another parser f v, which
-    -- | is then applied to the output string out that was produced by the first parser to give the
-    -- | final result
     -- (>>=) :: Parser a -> (a -> Parser b) -> Parser b
   p >>= f = P(\inp -> case parse p inp of
                     [] -> []
                     [(v, remaining)] -> parse (f v) remaining)
 
 
-    -- | Make Parser an instance of Alternative
+    -- instance of Alternative
 instance Alternative Parser where
-    -- | Empty will represent a parser that always fails regardless the input.
-    -- | In our case this is the parser which returns an empty list
     -- empty :: Parser a
   empty = P (\inp -> [])
-
-    -- | The choice operator will call the second parser if the first has failed, or return the first
-    -- | result if the first parser has succeded
     -- (<|>) :: Parser a -> Parser a -> Parser a
   p <|> q = P(\inp -> case parse p inp of
                         []         -> parse q inp
                         [(v, out)] -> [(v, out)])
 
+
+------------------------------------------------------------------
+
+item :: Parser Char
+item = P (\inp -> case inp of
+                    [] ->     []
+                    (x:xs) -> [(x, xs)])
+
+-- Parses the first character if it satisfies the conditions, and returns empty otherwise
+sat :: (Char -> Bool) -> Parser Char
+sat predicate = do x <- item
+                   if predicate x then return x else empty
+
+-- |  Parses a single digit
+digit :: Parser Char
+digit = sat isDigit
+
+-- | Parses a lowercase letter
+lower :: Parser Char
+lower = sat isLower
+
+-- | Parses an uppercase letter
+upper :: Parser Char
+upper = sat isUpper
+
+-- | Parses a letter
+letter :: Parser Char
+letter = sat isAlpha
+
+-- | Parses a letter or a digit
+alphanum :: Parser Char
+alphanum = sat isAlphaNum
+
+-- | Parses a specific character
+char :: Char -> Parser Char
+char x = sat (== x)
+
+-- | Parses a string
+string :: String -> Parser String
+string []     = return []
+string (x:xs) = do char x       -- first char
+                   string xs     -- recursion
+                   return (x:xs) -- return f string
+
+ident :: Parser String
+ident = do v <- lower
+           vs <- many alphanum
+           return (v:vs)
+
+-- | Parses a natural number
+nat :: Parser Int
+nat = do ns <- some digit
+         return (read ns) -- Converts a string to an integer
+
+-- | Parsers zero or more spaces
+space :: Parser ()
+space = do many (sat isSpace) -- Takes all the spaces
+           return ()          -- Returns the remaining string
+
+-- | Parses an integer number
+int :: Parser Int
+int = do char '-'    -- If it reads the -
+         n <- nat        -- Keep reading the number
+         return (-n)     -- Return the negative number
+      <|> nat -- Otherwise return the simple number
+
+-- function that ignores spaces between and after applying a parser
+token :: Parser a -> Parser a
+token parser = do space
+                  value <- parser
+                  space
+                  return value
+
+--  parsers that ignore spaces around identifiers, natural numbers, integers and special symbols
+
+identifier:: Parser String
+identifier = token ident
+
+natural :: Parser Int
+natural = token nat
+
+integer :: Parser Int
+integer = token int
+
+character :: String -> Parser String
+character xs = token (string xs)
 

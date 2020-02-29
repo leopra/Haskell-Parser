@@ -8,7 +8,7 @@ data Expr a
       | EConstr Int Int         -- Constructor (Tag, Arity)
       | EAp (Expr a) (Expr a)   -- Applications
       | ELet                    -- Let (rec) expressions
-            IsRec               --      boolean with True = recursive
+            IsRec               --      boolean with True = Recursive
             [Def a]             --      Definitions
             (Expr a)            --      Body of let (rec)
       | ECase                   -- Case expressions
